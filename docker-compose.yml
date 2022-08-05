@@ -29,35 +29,6 @@ services:
       - net1
     profiles: ["elasticsearch"]
 
-  opensearch:
-    image: opensearchproject/opensearch:${OPENSEARCH_VERSION:-1.0.0}
-    environment:
-      - "bootstrap.memory_lock=true" # along with the memlock settings below, disables swapping
-      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m" # minimum and maximum Java heap size, recommend setting both to 50% of system RAM
-      - "discovery.type=single-node"
-      - "plugins.security.ssl.http.enabled=false" # disable SSL for local dev, do not use in production
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    volumes:
-      - opensearch-data:/usr/share/opensearch/data
-    ports:
-        - "${OPENSEARCH_PORT:-9200}:9200"
-    networks:
-      - net1
-    profiles: ["opensearch"]
-
-  opensearch-dashboards:
-    image: opensearchproject/opensearch-dashboards:${OPENSEARCH_VERSION:-1.0.0}
-    ports:
-      - "${OPENSEARCH_DASHBOARD_PORT:-5601}:5601"
-    environment:
-      OPENSEARCH_HOSTS: '["http://opensearch:9200"]' # must be a string with no spaces when specified as an environment variable
-    networks:
-      - net1
-    profiles: ["opensearch"]
-
   api:
     build:
       dockerfile: ./api.Dockerfile
@@ -66,9 +37,11 @@ services:
       - "${API_PORT:-8000}:80"
     environment:
       ES_URL: ${ES_URL:-http://elasticsearch:9200}
-      OPENSEARCH_URL: ${OPENSEARCH_URL:-http://admin:admin@opensearch:9200}
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
     volumes:
-      - "./api/:/app/api/" # mount the api directory from the host into the container  
+      - "./api/:/app/api/" # mount the api directory from the host into the container
+      - "./data:/data/" # mount the data directory from the host into the container
+  
     networks:
       - net1
     profiles: ["backend"]
@@ -91,7 +64,8 @@ services:
       context: .
     environment:
       ES_URL: ${ES_URL:-http://elasticsearch:9200}
-      OPENSEARCH_URL: ${OPENSEARCH_URL:-http://admin:admin@opensearch:9200}
+      #OPENSEARCH_URL: ${OPENSEARCH_URL:-http://admin:admin@localhost:9200}
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
     volumes:
       - "./scripts/:/app/scripts/" # mount the scripts directory from the host into the container
       - "./data:/data/" # mount the data directory from the host into the container

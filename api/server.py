@@ -1,5 +1,6 @@
 from sanic import Sanic
 from sanic import exceptions
+from sanic import response
 from sanic.log import logger
 from sanic.response import json
 from api.cors import add_cors_headers
@@ -7,6 +8,9 @@ import torch
 import os
 import clip
 from elasticsearch import AsyncElasticsearch, TransportError
+from .indexing import ensure_index_exist, read_unsplash_photos, load_unsplash_photos_in_index
+from .elasticsearch_template import index_template as elasticsearch_index_template
+
 
 app = Sanic("image-search-api")
 # Fill in CORS headers
@@ -34,11 +38,41 @@ def encode_query(query: str):
         text_encoded /= text_encoded.norm(dim=-1, keepdim=True)
         return text_encoded.tolist()[0]
 
+@app.get("/index")
+async def build_index(request):
+    logger.error('begin index on: ' + str(os.environ.get('ES_URL')))
+    try:
+        ensure_index_exist(es_url=os.environ.get('ES_URL'), index_name=index_name,
+                       index_template=elasticsearch_index_template)
+        #ids_filename = request.args.get('ids_filename')
+        #logger.info("ids filename: " + str(ids_filename))
+        #features_filename = request.args.get('features_filename')
+        id_count = request.args.get('count')
+        #logger.info("feature filename: " + str(features_filename))
+        ids_filename='/data/photo_ids.csv'
+        features_filename='/data/features.npy'
+        ids, features = read_unsplash_photos(
+        ids_filename='/data/photo_ids.csv', features_filename='/data/features.npy')
+        print('Read unsplash photo ids')
+        start = 0
+        end = int(id_count)
+        ids, features = read_unsplash_photos(
+                ids_filename=ids_filename, features_filename=features_filename)
+        load_unsplash_photos_in_index(es_url=os.environ.get('ES_URL'), index_name=index_name,
+                                  ids=ids[start:end], features=features[start:end])
 
-@app.get("/")
+        return response.json({'message': 'Success'})
+
+    except Exception as e:
+        logger.error(e.info)
+        return response.json({'message': 'Failure'})
+
+
+@app.get("/search")
 async def search(request):
     db = request.args.get('db', 'elasticsearch')
-    search_term = request.args.get('search', 'dogs playing in the snow')
+    #logger.error('opensearch url: ' + str(os.environ.get('OPENSEARCH_URL')))
+    search_term = request.args.get('query', 'dogs playing in the snow')
     text_features = encode_query(search_term)
     try:
         if db == 'elasticsearch':
